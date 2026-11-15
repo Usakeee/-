@@ -6,10 +6,10 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#FFE69C",
-  "theme_color": "#FFE69C",
+  "background_color": "#15182E",
+  "theme_color": "#15182E",
   "lang": "ko",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

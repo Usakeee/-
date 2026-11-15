@@ -1,6 +1,6 @@
 // Caches the app shell so it opens instantly, even offline.
-const CACHE = 'lullaby-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'lullaby-v2';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.png', './assets/cat.webp'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
