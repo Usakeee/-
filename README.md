@@ -25,3 +25,11 @@ GitHub Pages 같은 곳에 올린 뒤 휴대폰으로 접속해요.
 ## 참고
 - 아이폰 Safari는 웹페이지가 볼륨을 바꾸지 못해서 음량 조절과 페이드 효과가 동작하지 않아요. 휴대폰 볼륨 버튼으로 조절해 주세요. 타이머가 끝나면 소리는 정상적으로 꺼져요.
 - 브람스 자장가와 작은 별은 저작권이 만료된 곡입니다.
+
+## 안드로이드 앱(APK)
+`.github/workflows/android.yml`이 푸시할 때마다 APK를 자동으로 만들어서
+[Releases의 apk-latest](../../releases/tag/apk-latest)에 올립니다.
+
+- 휴대폰에서 `dalbit-lullaby.apk`를 받아 설치하면 돼요 ("출처를 알 수 없는 앱" 설치 허용 필요)
+- 앱에서는 켜자마자 바로 재생되고, 화면이 꺼져도 알림 표시줄의 "달빛 자장가"가 소리와 타이머를 유지해요
+- 직접 빌드하려면: `npm install && npm run sync` 후 `android/` 폴더를 Android Studio로 열기

@@ -1,0 +1,17 @@
+{
+  "name": "dalbit-lullaby",
+  "version": "1.0.0",
+  "private": true,
+  "description": "달빛 자장가 — 켜면 바로 자장가가 나오는 수면 앱",
+  "scripts": {
+    "web": "node scripts/copy-web.js",
+    "sync": "npm run web && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.1",
+    "@capacitor/core": "6.2.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.1"
+  }
+}

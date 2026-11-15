@@ -499,8 +499,22 @@ input[type="range"] { width: 100%; accent-color: var(--moon); }
       $('#hint').textContent = '달을 한 번 눌러주세요. 브라우저가 자동 재생을 막았어요.';
     }
   }
+  // Inside the Android app: a native service keeps sound and the timer alive with the screen off.
+  function keeper(on) {
+    const k = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SleepKeeper;
+    if (!k) return;
+    try {
+      const p = on ? k.start({ title: nowTitle(), maxMs: endAt ? endAt - Date.now() : 0 }) : k.stop();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+  }
+  function nowTitle() {
+    const parts = [state.music !== 'none' && TRACKS[state.music].title, state.amb !== 'none' && AMB_TITLES[state.amb]].filter(Boolean);
+    return parts.join(' + ') || '달빛 자장가';
+  }
   function stop(message) {
     state.playing = false;
+    keeper(false);
     musicEl.pause(); ambEl.pause();
     clearInterval(tickId); clearTimeout(breathId); clearInterval(whisperId); clearTimeout(dimId);
     $('#night').hidden = true; $('#home').hidden = false;
@@ -546,10 +560,10 @@ input[type="range"] { width: 100%; accent-color: var(--moon); }
     clearTimeout(breathId); breathe(0, PHASES[0][1]);
     clearInterval(tickId); tick(); tickId = setInterval(tick, 500);
     scheduleDim();
+    keeper(true);
     if ('mediaSession' in navigator) {
       try {
-        const parts = [state.music !== 'none' && TRACKS[state.music].title, state.amb !== 'none' && AMB_TITLES[state.amb]].filter(Boolean);
-        navigator.mediaSession.metadata = new MediaMetadata({ title: parts.join(' + ') || '달빛 자장가', artist: '달빛 자장가' });
+        navigator.mediaSession.metadata = new MediaMetadata({ title: nowTitle(), artist: '달빛 자장가' });
         navigator.mediaSession.playbackState = 'playing';
         navigator.mediaSession.setActionHandler('pause', () => stop());
         navigator.mediaSession.setActionHandler('stop', () => stop());
@@ -596,7 +610,7 @@ input[type="range"] { width: 100%; accent-color: var(--moon); }
   prepare().catch(() => {}).finally(() => moon.classList.remove('loading'));
   if (state.autostart) tryAutostart();
 
-  /*PWA*/ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { navigator.serviceWorker.register('sw.js').catch(() => {}); } /*/PWA*/
+  /*PWA*/ if ('serviceWorker' in navigator && !window.Capacitor && location.protocol.startsWith('http')) { navigator.serviceWorker.register('sw.js').catch(() => {}); } /*/PWA*/
 })();
 </script>
 </body>

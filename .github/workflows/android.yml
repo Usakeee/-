@@ -1,0 +1,55 @@
+name: 안드로이드 앱 만들기
+
+on:
+  push:
+    branches: [ccr-434dccf6-j5yy7t, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Same signing key every build, so a new APK installs over the old one.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore-v1
+
+      - run: npm ci
+      - run: npm run sync
+
+      - name: Build APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk dalbit-lullaby.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dalbit-lullaby-apk
+          path: dalbit-lullaby.apk
+
+      - name: Publish phone download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --yes --cleanup-tag || true
+          gh release create apk-latest dalbit-lullaby.apk \
+            --target "${{ github.sha }}" \
+            --title "달빛 자장가 안드로이드 앱" \
+            --notes "휴대폰에서 아래 dalbit-lullaby.apk를 눌러 받은 뒤 설치하세요."
