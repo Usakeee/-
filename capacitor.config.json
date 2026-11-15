@@ -2,8 +2,8 @@
   "appId": "com.usakeee.dalbitlullaby",
   "appName": "달빛 자장가",
   "webDir": "www",
-  "backgroundColor": "#0B1022",
+  "backgroundColor": "#FFE69C",
   "android": {
-    "backgroundColor": "#0B1022"
+    "backgroundColor": "#FFE69C"
   }
 }

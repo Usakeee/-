@@ -14,13 +14,16 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /** Called from the web page: start() when the lullaby begins, stop() when it ends. */
 @CapacitorPlugin(name = "SleepKeeper")
 public class SleepKeeperPlugin extends Plugin {
+    private boolean askedForNotifications = false;
 
     @PluginMethod
     public void start(PluginCall call) {
         if (Build.VERSION.SDK_INT >= 33
+                && !askedForNotifications
                 && ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED
                 && getActivity() != null) {
+            askedForNotifications = true;
             ActivityCompat.requestPermissions(getActivity(), new String[] { Manifest.permission.POST_NOTIFICATIONS }, 7);
         }
         Double maxMs = call.getDouble("maxMs", 0.0);
