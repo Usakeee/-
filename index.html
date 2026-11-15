@@ -182,6 +182,9 @@ h1 {
 input[type="range"] { width: 100%; accent-color: var(--gold); }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
 .toggle input { width: 18px; height: 18px; accent-color: var(--gold); }
+.battery-row { display: grid; gap: 10px; justify-items: start; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--gold-soft); font-size: 13.5px; color: var(--ink); }
+.battery-row[data-urgent="true"] { border-color: var(--rose); }
+.last-night { margin: -10px 0 0; max-width: 520px; text-align: center; font-size: 13px; color: var(--muted); text-wrap: balance; }
 
 /* ---------- Night ---------- */
 #night {
@@ -269,6 +272,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     <span class="hero-cta">눌러서 잠들기</span>
   </button>
   <p class="start-hint" id="hint">그림을 누르면 자장가가 시작돼요</p>
+  <p class="last-night" id="lastNight" hidden></p>
 
   <section class="settings" aria-label="설정">
    <div class="panel">
@@ -311,6 +315,10 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       <label class="slider" for="musicVol">음악 크기 <input type="range" id="musicVol" min="0" max="1" step="0.05"></label>
       <label class="slider" for="ambVol">배경 소리 크기 <input type="range" id="ambVol" min="0" max="1" step="0.05"></label>
       <label class="toggle" for="autostart"><input type="checkbox" id="autostart"> 앱을 열면 바로 재생하기</label>
+      <div class="battery-row" id="batteryRow" hidden>
+        <span>화면이 꺼져 있을 때 휴대폰이 앱을 닫지 않게 하려면 배터리 사용을 ‘제한 없음’으로 바꿔주세요.</span>
+        <button class="chip" id="batteryBtn" type="button">끊김 방지 켜기</button>
+      </div>
     </div>
    </div>
   </section>
@@ -727,9 +735,17 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     if (!url) { el.pause(); el.removeAttribute('src'); return; }
     if (el.src !== url) el.src = url;
     el.currentTime = 0;
-    await el.play();
+    // play() is aborted when the source changes underneath it (e.g. the unlock clip); try again shortly
+    for (let i = 0; ; i++) {
+      try { await el.play(); return; } catch (e) {
+        if (i >= 3 || !e || e.name !== 'AbortError') throw e;
+        await new Promise((r) => setTimeout(r, 200));
+        if (el.src !== url) return;
+      }
+    }
   }
-  async function playIndex(i) {
+  let switching = false;
+  async function playIndex(i, tries = 0) {
     if (!queue.length) { musicEl.pause(); $('#now').hidden = true; return; }
     if (i >= queue.length) {
       i = 0;
@@ -742,9 +758,17 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     $('#now').hidden = false;
     $('#nowTitle').textContent = TRACKS[key].title;
     $('#nextBtn').hidden = queue.length < 2;
-    const url = await getUrl('music', key);
-    if (!state.playing || token !== playToken) return; // a newer song was picked meanwhile
-    await setAndPlay(musicEl, url);
+    switching = true;
+    try {
+      const url = await getUrl('music', key);
+      if (!state.playing || token !== playToken) return; // a newer song was picked meanwhile
+      await setAndPlay(musicEl, url);
+    } catch (e) {
+      if (token === playToken && state.playing && tries < queue.length) { setTimeout(() => playIndex(qi + 1, tries + 1).catch(() => {}), 2000); return; }
+      throw e;
+    } finally {
+      if (token === playToken) switching = false;
+    }
     updateNowPlaying();
     if (queue.length > 1) getUrl('music', queue[(qi + 1) % queue.length]).catch(() => {}); // get the next song ready
   }
@@ -764,20 +788,37 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     try { musicEl.volume = Math.max(0, Math.min(1, state.musicVol * k)); ambEl.volume = Math.max(0, Math.min(1, state.ambVol * k)); } catch (e) {}
     return now;
   }
+  // If something else interrupts playback (a notification sound, a call, the system), start it again.
+  let lastRescue = 0, lastBeat = 0;
+  function watchdog(now) {
+    if (now - lastRescue < 3000) return;
+    const want = [[musicEl, queue.length > 0 && !switching], [ambEl, state.amb !== 'none']];
+    want.forEach(([el, should]) => {
+      if (!should || !el.paused || !el.src || el.src === SILENT || el.ended) return;
+      lastRescue = now;
+      el.play().then(() => { session.rescued++; saveSession(); }).catch(() => {});
+    });
+    if (now - lastBeat > 30000) { lastBeat = now; session.alive = now; saveSession(); }
+  }
   function tick() {
     const now = applyVolumes();
+    if (state.playing) watchdog(now);
     if (endAt) {
       const left = Math.max(0, endAt - now);
       const m = Math.floor(left / 60000), s = Math.floor(left / 1000) % 60;
       $('#remain').textContent = `${m}:${String(s).padStart(2, '0')} 뒤에 꺼져요`;
-      if (left <= 0) stop('푹 자요. 내일 또 만나요.');
+      if (left <= 0) stop('푹 자요. 내일 또 만나요.', 'timer');
     } else {
       $('#remain').textContent = '타이머 없음';
     }
   }
   function nothingSelected() { return !state.list.length && state.amb === 'none'; }
+  let session = { start: 0, alive: 0, end: 0, reason: '', rescued: 0, timer: 0 };
+  const saveSession = () => store.set('lastSession', session);
   function beginSession() {
     startAt = Date.now();
+    session = { start: startAt, alive: startAt, end: 0, reason: '', rescued: 0, timer: state.timer };
+    saveSession();
     endAt = state.timer ? startAt + state.timer * 60000 : 0;
     try { musicEl.volume = 0; ambEl.volume = 0; } catch (e) {}
   }
@@ -796,7 +837,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       if (!state.playing) return;
       await Promise.all([playIndex(0), setAndPlay(ambEl, au)]);
     } catch (e) {
-      stop('소리를 켜지 못했어요. 그림을 한 번 더 눌러주세요.');
+      stop('소리를 켜지 못했어요. 그림을 한 번 더 눌러주세요.', 'error');
     }
   }
   // Called on open: browsers often block sound until a tap, so this only succeeds sometimes (always in the Android app).
@@ -836,13 +877,14 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       try {
         navigator.mediaSession.metadata = new MediaMetadata({ title: nowTitle(), artist: '달빛 자장가' });
         navigator.mediaSession.playbackState = 'playing';
-        navigator.mediaSession.setActionHandler('pause', () => stop());
-        navigator.mediaSession.setActionHandler('stop', () => stop());
+        navigator.mediaSession.setActionHandler('pause', () => stop('', 'media'));
+        navigator.mediaSession.setActionHandler('stop', () => stop('', 'media'));
         navigator.mediaSession.setActionHandler('nexttrack', queue.length > 1 ? () => playIndex(qi + 1).catch(() => {}) : null);
       } catch (e) {}
     }
   }
-  function stop(message) {
+  function stop(message, reason) {
+    if (state.playing && session.start) { session.end = Date.now(); session.reason = reason || 'user'; saveSession(); showLastSession(); }
     state.playing = false;
     keeper(false);
     musicEl.pause(); ambEl.pause();
@@ -850,6 +892,24 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     $('#night').hidden = true; $('#home').hidden = false;
     $('#hint').textContent = message || '그림을 누르면 자장가가 시작돼요';
     if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {} }
+  }
+
+  /* ---------- what happened last night ---------- */
+  const hm = (t) => new Date(t).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  function showLastSession() {
+    const s = store.get('lastSession', null), el = $('#lastNight');
+    if (!s || !s.start) { el.hidden = true; return; }
+    const mins = (a, b) => Math.max(1, Math.round((b - a) / 60000));
+    let text;
+    if (s.end) {
+      const why = { timer: `${s.timer}분 타이머가 끝나서 꺼졌어요`, user: '멈추기 버튼으로 껐어요', media: '알림창이나 이어폰에서 멈췄어요', error: '소리를 켜지 못했어요' }[s.reason] || '꺼졌어요';
+      text = `지난번 재생 · ${hm(s.start)}부터 ${mins(s.start, s.end)}분 · ${why}`;
+    } else {
+      text = `지난번 재생 · ${hm(s.start)}부터 약 ${mins(s.start, s.alive)}분 뒤 앱이 갑자기 꺼졌어요. 휴대폰이 배터리 절약을 위해 앱을 닫은 것 같아요.`;
+      $('#batteryRow').dataset.urgent = 'true';
+    }
+    if (s.rescued) text += ` (중간에 ${s.rescued}번 끊겼지만 다시 켰어요)`;
+    el.textContent = text; el.hidden = false;
   }
 
   /* ---------- night screen ---------- */
@@ -947,8 +1007,19 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   const auto = $('#autostart'); auto.checked = state.autostart;
   auto.addEventListener('change', () => { state.autostart = auto.checked; store.set('autostart', auto.checked); });
 
+  // Android app: ask to be exempt from battery optimisation so the system never closes it mid-lullaby.
+  const native = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SleepKeeper;
+  async function checkBattery() {
+    const k = native(); if (!k || !k.batteryStatus) return;
+    try { const r = await k.batteryStatus(); $('#batteryRow').hidden = !!r.unrestricted; } catch (e) {}
+  }
+  $('#batteryBtn').addEventListener('click', () => { const k = native(); if (k && k.requestUnrestricted) k.requestUnrestricted().catch(() => {}); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkBattery(); });
+  checkBattery();
+  showLastSession();
+
   $('#startBtn').addEventListener('click', start);
-  $('#stop').addEventListener('click', () => stop());
+  $('#stop').addEventListener('click', () => stop('', 'user'));
   $('#nextBtn').addEventListener('click', () => playIndex(qi + 1).catch(() => {}));
   $('#night').addEventListener('pointerdown', scheduleDim);
 

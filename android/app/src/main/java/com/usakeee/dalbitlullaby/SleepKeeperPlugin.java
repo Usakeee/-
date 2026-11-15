@@ -3,7 +3,11 @@ package com.usakeee.dalbitlullaby;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
+import com.getcapacitor.JSObject;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.Plugin;
@@ -37,6 +41,32 @@ public class SleepKeeperPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("재생 유지 서비스를 시작하지 못했어요", e);
         }
+    }
+
+    @PluginMethod
+    public void batteryStatus(PluginCall call) {
+        PowerManager pm = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+        boolean free = Build.VERSION.SDK_INT < 23 || (pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+        JSObject r = new JSObject();
+        r.put("unrestricted", free);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void requestUnrestricted(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 23) {
+            try {
+                Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                i.setData(Uri.parse("package:" + getContext().getPackageName()));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            } catch (Exception e) {
+                Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            }
+        }
+        call.resolve();
     }
 
     @PluginMethod
