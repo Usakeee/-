@@ -16,7 +16,19 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // One fixed key for every build, so a new APK installs as an update over the old one.
+    signingConfigs {
+        shared {
+            storeFile file('../keystore/dalbit-lullaby.jks')
+            storePassword 'dalbitlullaby'
+            keyAlias 'dalbit'
+            keyPassword 'dalbitlullaby'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

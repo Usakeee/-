@@ -24,12 +24,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # Same signing key every build, so a new APK installs over the old one.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: debug-keystore-v1
-
       - run: npm ci
       - run: npm run sync
 
