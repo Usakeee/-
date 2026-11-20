@@ -7,6 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -21,6 +24,47 @@ public class PlaybackService extends Service {
     private static final String CHANNEL = "sleep_playback";
     private static final long SAFETY_MS = 10 * 60 * 1000L;
     private PowerManager.WakeLock wakeLock;
+    private AudioManager audio;
+    private AudioFocusRequest focusRequest;
+    private boolean holdingFocus = false;
+
+    /** An alarm or a ringing phone takes the audio focus: tell the page so the lullaby stops for good. */
+    private final AudioManager.OnAudioFocusChangeListener focusListener = (change) -> {
+        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            holdingFocus = false;
+            int mode = audio != null ? audio.getMode() : AudioManager.MODE_NORMAL;
+            boolean call = mode == AudioManager.MODE_RINGTONE || mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
+            SleepKeeperPlugin.emitInterrupted(call ? "call" : "alarm");
+        }
+        // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK (a message notification) is ignored: the lullaby just keeps going.
+    };
+
+    private void takeFocus() {
+        if (holdingFocus) return;
+        audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audio == null) return;
+        int r;
+        if (Build.VERSION.SDK_INT >= 26) {
+            focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setOnAudioFocusChangeListener(focusListener)
+                    .build();
+            r = audio.requestAudioFocus(focusRequest);
+        } else {
+            r = audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+        holdingFocus = r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void dropFocus() {
+        if (audio == null) return;
+        if (Build.VERSION.SDK_INT >= 26 && focusRequest != null) audio.abandonAudioFocusRequest(focusRequest);
+        else audio.abandonAudioFocus(focusListener);
+        holdingFocus = false;
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -54,6 +98,7 @@ public class PlaybackService extends Service {
             // With a sleep timer, never hold the lock much longer than the timer itself.
             wakeLock.acquire(maxMs > 0 ? maxMs + SAFETY_MS : 10 * 60 * 60 * 1000L);
         }
+        takeFocus();
         return START_NOT_STICKY;
     }
 
@@ -65,6 +110,7 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         releaseLock();
+        dropFocus();
         MainActivity.keepAwake = false;
         super.onDestroy();
     }

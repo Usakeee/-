@@ -314,6 +314,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     <div class="group">
       <label class="slider" for="musicVol">음악 크기 <input type="range" id="musicVol" min="0" max="1" step="0.05"></label>
       <label class="slider" for="ambVol">배경 소리 크기 <input type="range" id="ambVol" min="0" max="1" step="0.05"></label>
+      <label class="toggle" for="boxMode"><input type="checkbox" id="boxMode"> 오르골 버전으로 듣기 <span class="sub">끄면 부드러운 피아노 소리</span></label>
       <label class="toggle" for="autostart"><input type="checkbox" id="autostart"> 앱을 열면 바로 재생하기</label>
       <div class="battery-row" id="batteryRow" hidden>
         <span>화면이 꺼져 있을 때 휴대폰이 앱을 닫지 않게 하려면 배터리 사용을 ‘제한 없음’으로 바꿔주세요.</span>
@@ -580,6 +581,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     musicVol: store.get('musicVol', 0.7),
     ambVol: store.get('ambVol', 0.45),
     autostart: store.get('autostart', true),
+    box: store.get('box', false),
     playing: false,
   };
 
@@ -597,18 +599,48 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2); }
     return b;
   }
-  function bell(ctx, dest, midi, t, vel) {
-    const f = hz(midi); const g = ctx.createGain();
+  // Soft felt piano: a few slightly stretched harmonics through a closing low-pass, longer ring for low notes
+  function piano(ctx, dest, midi, t, vel) {
+    const f = hz(midi), dec = 1.4 + 3.2 * Math.pow(0.965, midi - 48);
+    const g = ctx.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vel, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(vel * 0.35, t + 0.3);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
-    g.connect(dest);
-    [[1, 1, 3.4], [2, 0.22, 0.7], [3.01, 0.07, 0.35], [4.17, 0.03, 0.2]].forEach(([mult, amp, dec]) => {
+    g.gain.linearRampToValueAtTime(vel, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(vel * 0.42, t + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dec + 0.5);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.4;
+    lp.frequency.setValueAtTime(Math.min(8000, f * 7), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(380, f * 1.6), t + dec);
+    lp.connect(g); g.connect(dest);
+    [[1, 1], [2.003, 0.42], [3.008, 0.2], [4.018, 0.1], [5.03, 0.05]].forEach(([mult, amp]) => {
       const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mult;
-      const og = ctx.createGain(); og.gain.setValueAtTime(amp, t); og.gain.exponentialRampToValueAtTime(amp * 0.005, t + dec);
-      o.connect(og); og.connect(g); o.start(t); o.stop(t + 3.5);
+      const og = ctx.createGain(); og.gain.value = amp; o.connect(og); og.connect(lp);
+      o.start(t); o.stop(t + dec + 0.6);
     });
+  }
+  // Music box: a plucked steel tine — fundamental plus the tine's inharmonic modes and a tiny pluck click
+  let clickBuf = null;
+  function tine(ctx, dest, midi, t, vel) {
+    const f = hz(midi), dec = 1.2 + 1.6 * Math.pow(0.97, midi - 72);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(vel * 0.3, t + 0.22);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    g.connect(dest);
+    [[1, 1, dec], [2.0, 0.1, 0.6], [5.93, 0.16, 0.14], [16.4, 0.05, 0.04]].forEach(([mult, amp, d]) => {
+      if (f * mult > 15000) return;
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mult; o.detune.value = (Math.random() - 0.5) * 6;
+      const og = ctx.createGain(); og.gain.setValueAtTime(amp, t); og.gain.exponentialRampToValueAtTime(amp * 0.003, t + d);
+      o.connect(og); og.connect(g); o.start(t); o.stop(t + dec + 0.05);
+    });
+    if (!clickBuf || clickBuf.sampleRate !== ctx.sampleRate) {
+      clickBuf = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.012), ctx.sampleRate);
+      const d = clickBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 4);
+    }
+    const src = ctx.createBufferSource(); src.buffer = clickBuf;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    const cg = ctx.createGain(); cg.gain.value = vel * 0.25;
+    src.connect(hp); hp.connect(cg); cg.connect(dest); src.start(t);
   }
   function pad(ctx, dest, midis, t, dur) {
     const att = 1.6, rel = 2.6; const g = ctx.createGain();
@@ -625,7 +657,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       });
     });
   }
-  async function renderMusic(track) {
+  async function renderMusic(track, box) {
     const SR = 32000, spb = 60 / track.bpm, L = track.beats * spb, tail = 8;
     const Ls = Math.round(L * SR);
     const ctx = new OAC(2, Ls + Math.round(tail * SR), SR);
@@ -633,12 +665,21 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, 4.5);
     const wet = ctx.createGain(); wet.gain.value = 0.5; verb.connect(wet); wet.connect(master);
     const dry = ctx.createGain(); dry.gain.value = 0.75; dry.connect(master);
-    const bellBus = ctx.createBiquadFilter(); bellBus.type = 'lowpass'; bellBus.frequency.value = 3800;
+    const bellBus = ctx.createBiquadFilter(); bellBus.type = 'lowpass'; bellBus.frequency.value = box ? 9000 : 4200;
     bellBus.connect(dry); bellBus.connect(verb);
     const padBus = ctx.createBiquadFilter(); padBus.type = 'lowpass'; padBus.frequency.value = 1100;
     padBus.connect(dry); padBus.connect(verb);
-    track.notes.forEach(([m, b]) => bell(ctx, bellBus, m, b * spb + 0.05, track.vel || 0.2));
-    track.chords.forEach(([b, d, c]) => pad(ctx, padBus, chordMidi(c), b * spb + 0.05, d * spb));
+    const level = (track.vel || 0.2) / 0.2;
+    if (box) {
+      // a real music box: everything sits up high on the comb, bass notes are plucked too, no sustained pads
+      const ms = track.notes.map((n) => n[0]).sort((a, b) => a - b), median = ms[Math.floor(ms.length / 2)] || 72;
+      const up = median < 77 ? 12 : 0;
+      track.notes.forEach(([m, b]) => tine(ctx, bellBus, Math.min(98, m + up), b * spb + 0.05, 0.2 * level));
+      track.chords.forEach(([b, d, c]) => { const root = chordMidi(c)[0]; tine(ctx, bellBus, root + 24, b * spb + 0.05, 0.13 * level); });
+    } else {
+      track.notes.forEach(([m, b]) => piano(ctx, bellBus, m, b * spb + 0.05, 0.2 * level));
+      track.chords.forEach(([b, d, c]) => pad(ctx, padBus, chordMidi(c), b * spb + 0.05, d * spb));
+    }
     const buf = await renderCtx(ctx);
     const chs = [buf.getChannelData(0), buf.getChannelData(1)].map((d) => {
       const out = d.slice(0, Ls);
@@ -696,19 +737,20 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
 
   const cache = {};
   const recent = []; // keep only a few rendered songs in memory
-  function touch(key) {
-    const i = recent.indexOf(key); if (i >= 0) recent.splice(i, 1);
-    recent.push(key);
+  function touch(id) {
+    const i = recent.indexOf(id); if (i >= 0) recent.splice(i, 1);
+    recent.push(id);
     while (recent.length > 4) {
-      const old = recent.shift(); const pr = cache['music:' + old]; delete cache['music:' + old];
+      const old = recent.shift(); const pr = cache[old]; delete cache[old];
       if (pr) pr.then((u) => { if (u && musicEl.src !== u) URL.revokeObjectURL(u); }).catch(() => {});
     }
   }
   function getUrl(kind, key) {
     if (!key || key === 'none') return Promise.resolve(null);
-    if (kind === 'music') touch(key);
-    const id = kind + ':' + key;
-    if (!cache[id]) cache[id] = (kind === 'music' ? renderMusic(TRACKS[key]) : renderAmb(key)).then((b) => URL.createObjectURL(b));
+    const box = !!state.box;
+    const id = kind === 'music' ? `music:${key}:${box ? 'box' : 'piano'}` : 'amb:' + key;
+    if (kind === 'music') touch(id);
+    if (!cache[id]) cache[id] = (kind === 'music' ? renderMusic(TRACKS[key], box) : renderAmb(key)).then((b) => URL.createObjectURL(b));
     return cache[id];
   }
 
@@ -731,13 +773,16 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   let startAt = 0, endAt = 0, tickId = 0, breathId = 0, whisperId = 0, dimId = 0;
   const FADE_IN = 8000, FADE_OUT = 180000;
 
+  // Our own pauses/loads also fire 'pause'; remember when we touched an element so those are not mistaken for interruptions.
+  const mine = (el) => { el.ourAt = Date.now(); };
   async function setAndPlay(el, url) {
+    mine(el); el.startedAt = Date.now();
     if (!url) { el.pause(); el.removeAttribute('src'); return; }
     if (el.src !== url) el.src = url;
     el.currentTime = 0;
     // play() is aborted when the source changes underneath it (e.g. the unlock clip); try again shortly
     for (let i = 0; ; i++) {
-      try { await el.play(); return; } catch (e) {
+      try { mine(el); await el.play(); mine(el); return; } catch (e) {
         if (i >= 3 || !e || e.name !== 'AbortError') throw e;
         await new Promise((r) => setTimeout(r, 200));
         if (el.src !== url) return;
@@ -776,7 +821,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     if (!state.playing || musicEl.src === SILENT) return;
     plays++;
     const need = Math.max(2, Math.ceil(MIN_SONG_SEC / (musicEl.duration || 45)));
-    if (plays < need) { musicEl.currentTime = 0; musicEl.play().catch(() => {}); }
+    if (plays < need) { mine(musicEl); musicEl.currentTime = 0; musicEl.play().catch(() => {}); }
     else playIndex(qi + 1).catch(() => {});
   });
 
@@ -788,16 +833,27 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     try { musicEl.volume = Math.max(0, Math.min(1, state.musicVol * k)); ambEl.volume = Math.max(0, Math.min(1, state.ambVol * k)); } catch (e) {}
     return now;
   }
-  // If something else interrupts playback (a notification sound, a call, the system), start it again.
-  let lastRescue = 0, lastBeat = 0;
+  // When an alarm, a call or another app takes over the sound, stop for good (never start again on our own,
+  // so the alarm can ring loudly in the morning).
+  function interrupted(kind) {
+    if (!state.playing) return;
+    stop('', kind || 'interrupted');
+  }
+  [musicEl, ambEl].forEach((el) => el.addEventListener('pause', () => {
+    if (!state.playing || el.src === SILENT || Date.now() - (el.ourAt || 0) < 1500) return;
+    if (el.ended || (el.duration && el.currentTime >= el.duration - 0.3)) return;
+    if (el === musicEl && switching) return;
+    // In the Android app the native side reports alarms and calls itself, so a bare pause is a hiccup: resume it.
+    // (Unless the web view turned out to manage the audio focus itself; then a pause *is* the alarm.)
+    if (native() && !webviewOwnsFocus) {
+      setTimeout(() => { if (state.playing && el.paused) { mine(el); el.play().then(() => { session.rescued++; saveSession(); }).catch(() => {}); } }, 1000);
+      return;
+    }
+    interrupted('interrupted');
+  }));
+  let webviewOwnsFocus = false;
+  let lastBeat = 0;
   function watchdog(now) {
-    if (now - lastRescue < 3000) return;
-    const want = [[musicEl, queue.length > 0 && !switching], [ambEl, state.amb !== 'none']];
-    want.forEach(([el, should]) => {
-      if (!should || !el.paused || !el.src || el.src === SILENT || el.ended) return;
-      lastRescue = now;
-      el.play().then(() => { session.rescued++; saveSession(); }).catch(() => {});
-    });
     if (now - lastBeat > 30000) { lastBeat = now; session.alive = now; saveSession(); }
   }
   function tick() {
@@ -887,6 +943,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     if (state.playing && session.start) { session.end = Date.now(); session.reason = reason || 'user'; saveSession(); showLastSession(); }
     state.playing = false;
     keeper(false);
+    mine(musicEl); mine(ambEl);
     musicEl.pause(); ambEl.pause();
     clearInterval(tickId); clearTimeout(breathId); clearInterval(whisperId); clearTimeout(dimId);
     $('#night').hidden = true; $('#home').hidden = false;
@@ -902,7 +959,8 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     const mins = (a, b) => Math.max(1, Math.round((b - a) / 60000));
     let text;
     if (s.end) {
-      const why = { timer: `${s.timer}분 타이머가 끝나서 꺼졌어요`, user: '멈추기 버튼으로 껐어요', media: '알림창이나 이어폰에서 멈췄어요', error: '소리를 켜지 못했어요' }[s.reason] || '꺼졌어요';
+      const why = { timer: `${s.timer}분 타이머가 끝나서 꺼졌어요`, user: '멈추기 버튼으로 껐어요', media: '알림창이나 이어폰에서 멈췄어요', error: '소리를 켜지 못했어요',
+        call: '전화가 와서 멈췄어요', alarm: '알람이나 다른 소리가 울려서 멈췄어요', interrupted: '알람이나 전화 같은 다른 소리가 울려서 멈췄어요' }[s.reason] || '꺼졌어요';
       text = `지난번 재생 · ${hm(s.start)}부터 ${mins(s.start, s.end)}분 · ${why}`;
     } else {
       text = `지난번 재생 · ${hm(s.start)}부터 약 ${mins(s.start, s.alive)}분 뒤 앱이 갑자기 꺼졌어요. 휴대폰이 배터리 절약을 위해 앱을 닫은 것 같아요.`;
@@ -1004,17 +1062,30 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     const el = $(sel); el.value = state[key];
     el.addEventListener('input', () => { state[key] = +el.value; store.set(key, state[key]); });
   });
+  const boxEl = $('#boxMode'); boxEl.checked = state.box;
+  boxEl.addEventListener('change', () => { state.box = boxEl.checked; store.set('box', state.box); prepare().catch(() => {}); });
   const auto = $('#autostart'); auto.checked = state.autostart;
   auto.addEventListener('change', () => { state.autostart = auto.checked; store.set('autostart', auto.checked); });
 
   // Android app: ask to be exempt from battery optimisation so the system never closes it mid-lullaby.
-  const native = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SleepKeeper;
+  function native() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SleepKeeper; }
   async function checkBattery() {
     const k = native(); if (!k || !k.batteryStatus) return;
     try { const r = await k.batteryStatus(); $('#batteryRow').hidden = !!r.unrestricted; } catch (e) {}
   }
   $('#batteryBtn').addEventListener('click', () => { const k = native(); if (k && k.requestUnrestricted) k.requestUnrestricted().catch(() => {}); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkBattery(); });
+  (() => {
+    const k = native(); if (!k || !k.addListener) return;
+    try {
+      k.addListener('interrupted', (d) => {
+        // right after we start a song the web view itself may take the audio focus; that is not an alarm
+        const recent = Math.max(musicEl.startedAt || 0, ambEl.startedAt || 0);
+        if (Date.now() - recent < 1500) { webviewOwnsFocus = true; return; }
+        interrupted(d && d.kind);
+      });
+    } catch (e) {}
+  })();
   checkBattery();
   showLastSession();
 

@@ -19,6 +19,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "SleepKeeper")
 public class SleepKeeperPlugin extends Plugin {
     private boolean askedForNotifications = false;
+    private static volatile SleepKeeperPlugin instance;
+
+    @Override
+    public void load() {
+        instance = this;
+    }
+
+    /** Called by PlaybackService when an alarm or a call takes over the sound. */
+    static void emitInterrupted(String kind) {
+        SleepKeeperPlugin p = instance;
+        if (p == null) return;
+        JSObject d = new JSObject();
+        d.put("kind", kind);
+        p.notifyListeners("interrupted", d);
+    }
 
     @PluginMethod
     public void start(PluginCall call) {
