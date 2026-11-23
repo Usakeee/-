@@ -298,6 +298,14 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
    </div>
    <div class="panel">
     <div class="group">
+      <span class="label" id="lbl-inst">악기</span>
+      <div class="chips" data-group="inst" role="group" aria-labelledby="lbl-inst">
+        <button class="chip" type="button" data-value="piano">피아노</button>
+        <button class="chip" type="button" data-value="box">오르골</button>
+        <button class="chip" type="button" data-value="kalimba">칼림바</button>
+      </div>
+    </div>
+    <div class="group">
       <span class="label" id="lbl-shuffle">재생 순서</span>
       <div class="chips" data-group="shuffle" role="group" aria-labelledby="lbl-shuffle">
         <button class="chip" type="button" data-value="false">순서대로</button>
@@ -326,7 +334,6 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     <div class="group">
       <label class="slider" for="musicVol">음악 크기 <input type="range" id="musicVol" min="0" max="1" step="0.05"></label>
       <label class="slider" for="ambVol">배경 소리 크기 <input type="range" id="ambVol" min="0" max="1" step="0.05"></label>
-      <label class="toggle" for="boxMode"><input type="checkbox" id="boxMode"> 오르골 버전으로 듣기 <span class="sub">끄면 부드러운 피아노 소리</span></label>
       <label class="toggle" for="autostart"><input type="checkbox" id="autostart"> 앱을 열면 바로 재생하기</label>
       <div class="battery-row" id="batteryRow" hidden>
         <span>화면이 꺼져 있을 때 휴대폰이 앱을 닫지 않게 하려면 배터리 사용을 ‘제한 없음’으로 바꿔주세요.</span>
@@ -665,7 +672,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     musicVol: store.get('musicVol', 0.7),
     ambVol: store.get('ambVol', 0.45),
     autostart: store.get('autostart', false),
-    box: store.get('box', false),
+    inst: store.get('inst', store.get('box', false) ? 'box' : 'piano'),
     playing: false,
   };
 
@@ -741,7 +748,35 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       });
     });
   }
-  async function renderMusic(track, box) {
+  // Kalimba: a thumb-plucked tine over a small wooden box — warm fundamental, faint metallic overtone,
+  // a tiny pitch settle at the pluck and a soft woody knock
+  let knockBuf = null;
+  function kalimba(ctx, dest, midi, t, vel) {
+    const f = hz(midi), dec = 1.8 + 2.4 * Math.pow(0.97, midi - 60);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(vel * 0.45, t + 0.16);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    g.connect(dest);
+    [[1, 1, dec], [2.01, 0.06, 0.5], [5.86, 0.1, 0.22], [11.2, 0.03, 0.07]].forEach(([mult, amp, d]) => {
+      if (f * mult > 15000) return;
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * mult * 1.006, t); o.frequency.exponentialRampToValueAtTime(f * mult, t + 0.045);
+      const og = ctx.createGain(); og.gain.setValueAtTime(amp, t); og.gain.exponentialRampToValueAtTime(amp * 0.004, t + d);
+      o.connect(og); og.connect(g); o.start(t); o.stop(t + dec + 0.05);
+    });
+    if (!knockBuf || knockBuf.sampleRate !== ctx.sampleRate) {
+      knockBuf = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.06), ctx.sampleRate);
+      const d = knockBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    }
+    const src = ctx.createBufferSource(); src.buffer = knockBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 320; bp.Q.value = 2.5;
+    const kg = ctx.createGain(); kg.gain.value = vel * 0.5;
+    src.connect(bp); bp.connect(kg); kg.connect(dest); src.start(t);
+  }
+  async function renderMusic(track, inst) {
+    const box = inst === 'box';
     const SR = 32000, spb = 60 / track.bpm, L = track.beats * spb, tail = 8;
     const Ls = Math.round(L * SR);
     const ctx = new OAC(2, Ls + Math.round(tail * SR), SR);
@@ -749,7 +784,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, 4.5);
     const wet = ctx.createGain(); wet.gain.value = 0.5; verb.connect(wet); wet.connect(master);
     const dry = ctx.createGain(); dry.gain.value = 0.75; dry.connect(master);
-    const bellBus = ctx.createBiquadFilter(); bellBus.type = 'lowpass'; bellBus.frequency.value = box ? 9000 : 4200;
+    const bellBus = ctx.createBiquadFilter(); bellBus.type = 'lowpass'; bellBus.frequency.value = box ? 9000 : inst === 'kalimba' ? 6500 : 4200;
     bellBus.connect(dry); bellBus.connect(verb);
     const padBus = ctx.createBiquadFilter(); padBus.type = 'lowpass'; padBus.frequency.value = 1100;
     padBus.connect(dry); padBus.connect(verb);
@@ -760,6 +795,12 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       const up = median < 77 ? 12 : 0;
       track.notes.forEach(([m, b]) => tine(ctx, bellBus, Math.min(98, m + up), b * spb + 0.05, 0.2 * level));
       track.chords.forEach(([b, d, c]) => { const root = chordMidi(c)[0]; tine(ctx, bellBus, root + 24, b * spb + 0.05, 0.13 * level); });
+    } else if (inst === 'kalimba') {
+      // a 17-tine kalimba lives around C4–E6: keep the tune there, pluck the chord roots on the low tines
+      const ms = track.notes.map((n) => n[0]).sort((a, b) => a - b), median = ms[Math.floor(ms.length / 2)] || 72;
+      const shift = median < 67 ? 12 : median > 84 ? -12 : 0;
+      track.notes.forEach(([m, b]) => kalimba(ctx, bellBus, Math.min(88, m + shift), b * spb + 0.05, 0.2 * level));
+      track.chords.forEach(([b, d, c]) => { const root = chordMidi(c)[0]; let r = root + 12; while (r < 55) r += 12; kalimba(ctx, bellBus, r, b * spb + 0.05, 0.11 * level); });
     } else {
       track.notes.forEach(([m, b]) => piano(ctx, bellBus, m, b * spb + 0.05, 0.2 * level));
       track.chords.forEach(([b, d, c]) => pad(ctx, padBus, chordMidi(c), b * spb + 0.05, d * spb));
@@ -838,10 +879,10 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   }
   function getUrl(kind, key) {
     if (!key || key === 'none') return Promise.resolve(null);
-    const box = !!state.box;
-    const id = kind === 'music' ? `music:${key}:${box ? 'box' : 'piano'}` : 'amb:' + key;
+    const inst = state.inst;
+    const id = kind === 'music' ? `music:${key}:${inst}` : 'amb:' + key;
     if (kind === 'music') touch(id);
-    if (!cache[id]) cache[id] = (kind === 'music' ? renderMusic(TRACKS[key], box) : renderAmb(key)).then((b) => URL.createObjectURL(b));
+    if (!cache[id]) cache[id] = (kind === 'music' ? renderMusic(TRACKS[key], inst) : renderAmb(key)).then((b) => URL.createObjectURL(b));
     return cache[id];
   }
 
@@ -1163,6 +1204,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       state[key] = parse(chip.dataset.value);
       store.set(key, state[key]); sync();
       if (key === 'amb') getUrl('amb', state.amb).catch(() => {});
+      if (key === 'inst') prepare().catch(() => {});
     });
     sync();
   });
@@ -1170,8 +1212,6 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     const el = $(sel); el.value = state[key];
     el.addEventListener('input', () => { state[key] = +el.value; store.set(key, state[key]); });
   });
-  const boxEl = $('#boxMode'); boxEl.checked = state.box;
-  boxEl.addEventListener('change', () => { state.box = boxEl.checked; store.set('box', state.box); prepare().catch(() => {}); });
   const auto = $('#autostart'); auto.checked = state.autostart;
   auto.addEventListener('change', () => { state.autostart = auto.checked; store.set('autostart', auto.checked); });
 
