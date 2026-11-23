@@ -11,7 +11,7 @@
 - **앱을 열면 바로 재생하기** (기본은 꺼짐): 켜두면 앱을 열자마자 재생해요
 - **크리스마스 테마**: 11월 20일부터 1월 6일까지 눈 내리는 크리스마스 그림과 빨간 포인트로 바뀌어요
 - **잠들기 타이머**: 15분 / 30분 / 1시간 / 끄지 않기. 끝나기 몇 분 전부터 소리가 서서히 작아져요
-- **오르골 버전 켜기/끄기**: 끄면 부드러운 피아노, 켜면 금속 빗살이 튕기는 진짜 오르골 소리
+- **악기 고르기**: 피아노 / 오르골 / 칼림바
 - **알람·전화가 오면 멈춤**: 알람이나 전화가 울리면 자장가가 완전히 멈춰서 알람 소리를 가리지 않아요
 - **4-7-8 호흡 가이드**: 4초 들이쉬고, 7초 멈추고, 8초 내쉬기
 - 20초 동안 화면을 안 만지면 화면이 더 어두워져요
@@ -41,5 +41,5 @@ GitHub Pages 같은 곳에 올린 뒤 휴대폰으로 접속해요.
 - 직접 빌드하려면: `npm install && npm run sync` 후 `android/` 폴더를 Android Studio로 열기
 
 ## 그림
-`assets/cat.webp`는 `art/paint-cat.html`, `assets/xmas.webp`는 `art/paint-xmas.html`이 코드로 직접 그린 그림입니다.
+`assets/cat.webp`는 `art/paint-cat.html`, `assets/xmas.webp`는 `art/paint-xmas.html`(순록은 `art/paint-reindeer.html`)이 코드로 직접 그린 그림입니다. 앱 아이콘 원본은 `art/icon.svg`예요.
 `node art/render.js`로 다시 그릴 수 있어요.

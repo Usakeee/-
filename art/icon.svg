@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- App icon: a gold crescent moon and a small four-point star on a deep night sky. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#2A2F66"/><stop offset="1" stop-color="#11132E"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FFF1CC"/><stop offset="0.45" stop-color="#EAC27C"/><stop offset="1" stop-color="#B8853E"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.44" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F3D69B" stop-opacity="0.28"/><stop offset="1" stop-color="#F3D69B" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="crescent">
+      <circle cx="232" cy="262" r="132" fill="#fff"/>
+      <circle cx="292" cy="222" r="116" fill="#000"/>
+    </mask>
+  </defs>
+  <g id="bg"><rect width="512" height="512" fill="url(#sky)"/></g>
+  <g id="art">
+    <circle cx="236" cy="258" r="210" fill="url(#halo)"/>
+    <rect width="512" height="512" fill="url(#gold)" mask="url(#crescent)"/>
+    <path d="M352 150 C356 176 362 182 388 186 C362 190 356 196 352 222 C348 196 342 190 316 186 C342 182 348 176 352 150 Z" fill="url(#gold)"/>
+    <circle cx="398" cy="252" r="5" fill="#F2D9A6" opacity="0.8"/>
+    <circle cx="318" cy="112" r="3.5" fill="#F2D9A6" opacity="0.6"/>
+  </g>
+</svg>

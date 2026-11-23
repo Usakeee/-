@@ -1,0 +1,247 @@
+<!doctype html>
+<!-- Paints a cute sleeping reindeer (fur brushed strand by strand) on a transparent canvas, for the Christmas scene.
+     Run art/render.js to use it. -->
+<meta charset="utf-8">
+<canvas id="c" width="1200" height="900"></canvas>
+<script>
+const W = 1200, H = 900;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let seed = 1224;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const mix = (c1, c2, t) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+// value noise
+const NG = 256, grid = new Float32Array(NG * NG).map(() => rnd());
+function noise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const g = (i, j) => grid[((j & 255) * NG) + (i & 255)];
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  return lerp(lerp(g(xi, yi), g(xi + 1, yi), u), lerp(g(xi, yi + 1), g(xi + 1, yi + 1), u), v);
+}
+const fbm = (x, y) => noise(x, y) * 0.6 + noise(x * 2.1, y * 2.1) * 0.3 + noise(x * 4.3, y * 4.3) * 0.1;
+
+/* ---------------- geometry ---------------- */
+const BODY = { x: 720, y: 600, rx: 270, ry: 135 };
+const HAUNCH = { x: 880, y: 565, rx: 168, ry: 150 };
+const CHEST = { x: 520, y: 590, rx: 150, ry: 138 };
+const HEAD = { x: 360, y: 540, rx: 112, ry: 100 };
+const MUZZLE = { x: 282, y: 598, rx: 72, ry: 54 };
+const EARS = [{ x: 258, y: 466, rx: 58, ry: 21, rot: 0.45 }, { x: 458, y: 452, rx: 56, ry: 20, rot: -0.5 }];
+const LEGS = [{ x: 410, y: 706, rx: 88, ry: 24 }, { x: 556, y: 716, rx: 82, ry: 23 }];
+const TAIL = { x: 1042, y: 520, rx: 32, ry: 25 };
+const ell = (e) => { const p = new Path2D(); p.ellipse(e.x, e.y, e.rx, e.ry, e.rot || 0, 0, Math.PI * 2); return p; };
+const headPath = () => { const p = ell(HEAD); p.addPath(ell(MUZZLE)); EARS.forEach((e) => p.addPath(ell(e))); return p; };
+const parts = [
+  { id: 1, path: () => { const p = ell(BODY); p.addPath(ell(HAUNCH)); p.addPath(ell(CHEST)); return p; } },
+  { id: 2, path: () => ell(TAIL) },
+  { id: 3, path: () => { const p = ell(LEGS[0]); p.addPath(ell(LEGS[1])); return p; } },
+  { id: 4, path: headPath },
+];
+
+/* part-id map + soft mask */
+const idC = document.createElement('canvas'); idC.width = W; idC.height = H; const ic = idC.getContext('2d');
+parts.forEach(pt => { ic.fillStyle = `rgb(${pt.id * 60},0,0)`; ic.fill(pt.path()); });
+const idData = ic.getImageData(0, 0, W, H).data;
+const partAt = (x, y) => { x |= 0; y |= 0; if (x < 0 || y < 0 || x >= W || y >= H) return 0; return Math.round(idData[(y * W + x) * 4] / 60); };
+const mC = document.createElement('canvas'); mC.width = W; mC.height = H; const mc = mC.getContext('2d');
+mc.fillStyle = '#fff'; parts.forEach(pt => mc.fill(pt.path()));
+const mRaw = mc.getImageData(0, 0, W, H).data;
+// separable box blur (3 passes ~ gaussian) of the silhouette, used for edges, rim light and occlusion
+const mData = (() => {
+  let a = new Float32Array(W * H); for (let i = 0; i < W * H; i++) a[i] = mRaw[i * 4 + 3] / 255;
+  const r = 9, tmp = new Float32Array(W * H);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let y = 0; y < H; y++) { let acc = 0; for (let x = -r; x <= r; x++) acc += a[y * W + clamp(x, 0, W - 1)];
+      for (let x = 0; x < W; x++) { tmp[y * W + x] = acc / (2 * r + 1); acc += a[y * W + Math.min(W - 1, x + r + 1)] - a[y * W + Math.max(0, x - r)]; } }
+    for (let x = 0; x < W; x++) { let acc = 0; for (let y = -r; y <= r; y++) acc += tmp[clamp(y, 0, H - 1) * W + x];
+      for (let y = 0; y < H; y++) { a[y * W + x] = acc / (2 * r + 1); acc += tmp[Math.min(H - 1, y + r + 1) * W + x] - tmp[Math.max(0, y - r) * W + x]; } }
+  }
+  return a;
+})();
+const softAt = (x, y) => { x = clamp(x | 0, 0, W - 1); y = clamp(y | 0, 0, H - 1); return mData[y * W + x]; };
+
+/* ---------------- shading model ---------------- */
+const LIGHT = (() => { const v = [0.62, -0.62, 0.48]; const d = Math.hypot(...v); return v.map(c => c / d); })();
+const C = { dark: [96, 60, 38], mid: [160, 106, 66], light: [200, 150, 104], cream: [244, 226, 200], white: [252, 246, 236] };
+function sphereN(e, x, y) {
+  const c = Math.cos(-(e.rot || 0)), s = Math.sin(-(e.rot || 0)), dx = x - e.x, dy = y - e.y;
+  const u = (dx * c - dy * s) / e.rx, v = (dx * s + dy * c) / e.ry; const r2 = u * u + v * v;
+  return [u, v, Math.sqrt(Math.max(0.02, 1 - r2)), r2];
+}
+const best = (list, x, y) => { const c = list.map((e) => sphereN(e, x, y)).filter((q) => q[3] < 1); return c.sort((p, q) => q[2] - p[2])[0] || sphereN(list[0], x, y); };
+function surface(x, y) {
+  const pid = partAt(x, y); if (!pid) return null;
+  let n, col, fur = [1, 0], glow = 0;
+  const nz = fbm(x / 50, y / 50);
+  if (pid === 4) {
+    const onEar = EARS.find((e) => sphereN(e, x, y)[3] < 1 && sphereN(HEAD, x, y)[3] >= 1);
+    if (onEar) {
+      const [u, v] = sphereN(onEar, x, y); n = [u * 0.3, -0.6, 0.75];
+      col = mix(C.mid, C.light, 0.3 + 0.3 * nz); fur = [Math.cos(onEar.rot) * Math.sign(u || 1), Math.sin(onEar.rot) * Math.sign(u || 1)];
+    } else {
+      const s = best([HEAD, MUZZLE], x, y); n = [s[0], s[1], s[2]];
+      col = mix(C.mid, C.light, 0.45 + 0.3 * nz);
+      col = mix(col, C.dark, smooth(-0.3, -0.85, (y - HEAD.y) / HEAD.ry) * 0.35); // a little darker on the crown
+      const md = ((x - MUZZLE.x) / 66) ** 2 + ((y - MUZZLE.y) / 50) ** 2;
+      col = mix(col, C.cream, smooth(1.3, 0.3, md));
+      const chin = smooth(1.0, 0.2, ((x - (MUZZLE.x + 20)) / 70) ** 2 + ((y - (MUZZLE.y + 40)) / 26) ** 2);
+      col = mix(col, C.white, chin);
+      [[318, 548], [408, 540]].forEach(([ex, ey]) => { col = mix(col, C.cream, smooth(1, 0.2, ((x - ex) / 38) ** 2 + ((y - ey) / 26) ** 2) * 0.55); });
+      glow = Math.max(smooth(1.2, 0.3, md), chin) * 0.5;
+      fur = [x - (MUZZLE.x - 30), y - (MUZZLE.y - 10)];
+    }
+  } else if (pid === 1) {
+    const s = best([BODY, HAUNCH, CHEST], x, y); n = [s[0], s[1] * 1.1, s[2]];
+    const v = (y - BODY.y) / BODY.ry;
+    col = mix(C.mid, C.light, 0.25 + 0.35 * nz);
+    col = mix(col, C.dark, smooth(0.0, -0.9, v) * 0.55);
+    col = mix(col, C.cream, smooth(0.3, 0.9, v) * 0.85);
+    // fawn spots scattered over the back
+    const sp = noise(x / 11, y / 11);
+    if (v < -0.05 && x > 600 && sp > 0.84) col = mix(col, C.cream, smooth(0.84, 0.9, sp) * 0.6);
+    const chestFluff = smooth(1.4, 0.2, ((x - (CHEST.x - 60)) / 130) ** 2 + ((y - (CHEST.y + 40)) / 120) ** 2);
+    col = mix(col, C.cream, chestFluff * 0.45);
+    fur = [-(y - BODY.y) / BODY.ry * 0.5 + 1, (x - BODY.x) / BODY.rx * 0.5 + 0.4];
+  } else if (pid === 2) {
+    const s = sphereN(TAIL, x, y); n = [s[0], s[1], s[2]]; col = mix(C.cream, C.white, 0.6 + 0.3 * nz); fur = [1, -0.4]; glow = 0.3;
+  } else {
+    const e = LEGS[x < 485 ? 0 : 1]; const s = sphereN(e, x, y); n = [s[0], s[1], s[2]];
+    col = mix(C.mid, C.cream, 0.35 + 0.3 * nz); fur = [-1, 0.1];
+  }
+  const nl = Math.hypot(...n); n = n.map(c => c / nl);
+  const diff = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
+  const soft = softAt(x, y);
+  const ao = 0.74 + 0.26 * smooth(0.3, 0.92, soft);
+  const bright = lerp((0.42 + 0.74 * diff) * ao, 0.95, glow);
+  const rim = smooth(0.62, 0.35, soft) * smooth(0.2, 0.7, n[0] * 0.7 - n[1] * 0.7);
+  let c = col.map(v => v * bright);
+  c = mix(c, [255, 236, 210], rim * 0.5);
+  c = mix(c, [70, 74, 120], (1 - diff) * 0.12 * (1 - glow));
+  return { c, fur, pid, soft };
+}
+
+/* ---------------- antlers (drawn first, the head covers their bases) ---------------- */
+function antler(pts, tines, flip) {
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const g = ctx.createLinearGradient(pts[0][0], pts[0][1], pts[pts.length - 1][0], pts[pts.length - 1][1]);
+  g.addColorStop(0, '#B08960'); g.addColorStop(0.6, '#E2C79C'); g.addColorStop(1, '#F6E6C8');
+  const stroke = (p, w) => { ctx.strokeStyle = '#6E5236'; ctx.lineWidth = w + 3; ctx.beginPath(); ctx.moveTo(...p[0]); for (let i = 1; i < p.length; i++) ctx.lineTo(...p[i]); ctx.stroke();
+    ctx.strokeStyle = g; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...p[0]); for (let i = 1; i < p.length; i++) ctx.lineTo(...p[i]); ctx.stroke(); };
+  stroke(pts, 13);
+  tines.forEach((t) => stroke(t, 9));
+  ctx.strokeStyle = 'rgba(255,250,235,0.55)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(pts[0][0] + 3 * flip, pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] + 3 * flip, pts[i][1]); ctx.stroke();
+  ctx.restore();
+}
+function antlers() {
+  antler([[326, 456], [312, 410], [290, 372], [270, 350]], [[[306, 398], [272, 392]], [[294, 378], [300, 344]]], -1);
+  antler([[392, 448], [404, 402], [426, 366], [448, 344]], [[[410, 392], [446, 388]], [[421, 372], [414, 338]]], 1);
+}
+
+/* ---------------- painting ---------------- */
+function base() {
+  ctx.save(); ctx.filter = 'blur(24px)'; ctx.fillStyle = 'rgba(20,12,30,0.5)';
+  ctx.beginPath(); ctx.ellipse(680, 752, 460, 58, 0, 0, 7); ctx.fill(); ctx.restore();
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 300; y < 860; y++) for (let x = 150; x < 1120; x++) {
+    const s = surface(x, y); if (!s) continue;
+    const i = (y * W + x) * 4;
+    d[i] = s.c[0]; d[i + 1] = s.c[1]; d[i + 2] = s.c[2]; d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function strokeFur(x, y, s, len, width, alpha, out, tint) {
+  let [fx, fy] = s.fur; const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
+  if (out) { fx = out[0]; fy = out[1]; }
+  const ang = Math.atan2(fy, fx) + (rnd() - 0.5) * 0.5;
+  const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
+  const bend = (rnd() - 0.5) * len * 0.35;
+  const jitter = 0.82 + rnd() * 0.36;
+  const c = (tint ? mix(s.c, tint, 0.4) : s.c).map(v => clamp(v * jitter, 0, 255) | 0);
+  ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha})`; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo((x + ex) / 2 - Math.sin(ang) * bend, (y + ey) / 2 + Math.cos(ang) * bend, ex, ey); ctx.stroke();
+}
+function fur() {
+  ctx.lineCap = 'round';
+  ctx.save();
+  const clip = new Path2D(); parts.forEach(pt => clip.addPath(pt.path())); ctx.clip(clip);
+  for (let k = 0; k < 150000; k++) {
+    const x = 150 + rnd() * 970, y = 300 + rnd() * 560; const s = surface(x, y); if (!s) continue;
+    strokeFur(x, y, s, s.pid === 4 ? 3 + rnd() * 5 : 5 + rnd() * 8, 0.8 + rnd() * 1, 0.35 + rnd() * 0.3);
+  }
+  ctx.restore();
+  for (let k = 0; k < 200000; k++) {
+    const x = 150 + rnd() * 970, y = 300 + rnd() * 560; const soft = softAt(x, y);
+    if (soft < 0.4 || soft > 0.64) continue; const s = surface(x, y); if (!s) continue;
+    const gx = softAt(x + 3, y) - softAt(x - 3, y), gy = softAt(x, y + 3) - softAt(x, y - 3); const gl = Math.hypot(gx, gy) || 1;
+    const lit = clamp(0.5 - gx / gl * 0.5 + gy / gl * 0.5);
+    strokeFur(x, y, s, 3 + rnd() * 5, 0.6 + rnd() * 0.6, 0.3, [-gx / gl, -gy / gl], mix([200, 150, 104], [255, 236, 208], lit));
+  }
+}
+function scarf() {
+  const red = (a) => `rgba(196,44,58,${a})`;
+  // the loop around the neck sits behind the head
+  ctx.save();
+  const p = new Path2D(); p.rect(0, 0, W, H); p.addPath(headPath()); ctx.clip(p, 'evenodd');
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#8E1F2C'; ctx.lineWidth = 64; ctx.beginPath(); ctx.moveTo(452, 500); ctx.quadraticCurveTo(516, 585, 486, 690); ctx.stroke();
+  ctx.strokeStyle = red(1); ctx.lineWidth = 56; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,190,190,0.25)'; ctx.lineWidth = 2;
+  for (let t = 0; t <= 1; t += 0.04) { // knit ribs across the band
+    const x = (1 - t) * (1 - t) * 452 + 2 * (1 - t) * t * 516 + t * t * 486, y = (1 - t) * (1 - t) * 500 + 2 * (1 - t) * t * 585 + t * t * 690;
+    ctx.beginPath(); ctx.moveTo(x - 26, y - 6); ctx.lineTo(x + 26, y + 6); ctx.stroke();
+  }
+  const sh = ctx.createLinearGradient(440, 0, 540, 0); sh.addColorStop(0, 'rgba(0,0,0,0.25)'); sh.addColorStop(1, 'rgba(255,240,220,0.18)');
+  ctx.strokeStyle = sh; ctx.lineWidth = 56; ctx.beginPath(); ctx.moveTo(452, 500); ctx.quadraticCurveTo(516, 585, 486, 690); ctx.stroke();
+  ctx.restore();
+  // the loose end drapes over the front legs
+  ctx.save(); ctx.lineCap = 'butt';
+  ctx.strokeStyle = '#8E1F2C'; ctx.lineWidth = 50; ctx.beginPath(); ctx.moveTo(492, 650); ctx.quadraticCurveTo(470, 720, 440, 770); ctx.stroke();
+  ctx.strokeStyle = red(1); ctx.lineWidth = 44; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,240,240,0.7)'; ctx.lineWidth = 3; // white stripes
+  [0.35, 0.6].forEach((t) => { const x = lerp(492, 440, t), y = lerp(650, 770, t); ctx.beginPath(); ctx.moveTo(x - 22, y - 4); ctx.lineTo(x + 22, y + 4); ctx.stroke(); });
+  ctx.strokeStyle = red(0.95); ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let k = 0; k < 9; k++) { const x = 418 + k * 5.5, y = 772 + k * 0.8; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2 + rnd() * 4, y + 14 + rnd() * 6); ctx.stroke(); }
+  ctx.restore();
+}
+function face() {
+  // inner ears
+  EARS.forEach((e) => {
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.rot);
+    const g = ctx.createLinearGradient(-e.rx, 0, e.rx, 0); g.addColorStop(0, 'rgb(232,178,170)'); g.addColorStop(1, 'rgb(246,216,198)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 2, e.rx * 0.62, e.ry * 0.45, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  });
+  // hooves peeking out at the front of the tucked legs
+  LEGS.forEach((l) => {
+    const g = ctx.createLinearGradient(l.x - l.rx - 10, l.y, l.x - l.rx + 30, l.y); g.addColorStop(0, '#2A1E1A'); g.addColorStop(1, '#5A4234');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(l.x - l.rx + 12, l.y + 4, 20, 15, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(20,12,10,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(l.x - l.rx - 4, l.y + 4); ctx.lineTo(l.x - l.rx + 8, l.y + 6); ctx.stroke();
+  });
+  // closed eyes with long lashes
+  [[318, 548, -1], [408, 540, 1]].forEach(([cx, cy, s]) => {
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,240,220,0.4)'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(cx - 22, cy - 5); ctx.quadraticCurveTo(cx, cy + 9, cx + 22, cy - 5); ctx.stroke();
+    ctx.strokeStyle = 'rgb(48,28,22)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(cx - 22, cy - 2); ctx.quadraticCurveTo(cx, cy + 13, cx + 22, cy - 2); ctx.stroke();
+    ctx.lineWidth = 2.4;
+    for (let k = 0; k < 4; k++) { const t = 0.2 + k * 0.2, x = lerp(cx - 22, cx + 22, t), y = cy - 2 + 15 * t * (1 - t) * 2;
+      ctx.beginPath(); ctx.moveTo(x, y + 2); ctx.quadraticCurveTo(x + (t - 0.5) * 10, y + 9, x + (t - 0.5) * 16 + s * 2, y + 12); ctx.stroke(); }
+    ctx.restore();
+  });
+  // rosy cheeks
+  ctx.save(); ctx.filter = 'blur(5px)'; ctx.fillStyle = 'rgba(240,140,150,0.5)';
+  ctx.beginPath(); ctx.ellipse(300, 578, 20, 11, 0, 0, 7); ctx.ellipse(432, 570, 20, 11, 0, 0, 7); ctx.fill(); ctx.restore();
+  // soft brown nose and a little smile
+  const nx = 226, ny = 590;
+  const ng = ctx.createRadialGradient(nx - 6, ny - 6, 2, nx, ny, 22); ng.addColorStop(0, '#7A5446'); ng.addColorStop(1, '#3A2620');
+  ctx.fillStyle = ng; ctx.beginPath(); ctx.ellipse(nx, ny, 22, 16, -0.1, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(nx - 8, ny - 7, 6, 3, -0.4, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgb(80,50,40)'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(nx + 6, ny + 16); ctx.quadraticCurveTo(nx + 18, ny + 28, nx + 32, ny + 20); ctx.stroke();
+}
+antlers(); base(); fur(); scarf(); face();
+window.done = true;
+</script>

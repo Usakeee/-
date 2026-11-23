@@ -15,6 +15,9 @@ const save = (url, file) => fs.writeFileSync(file, Buffer.from(url.split(',')[1]
   save(await p.evaluate(() => document.getElementById('c').toDataURL('image/webp', 0.86)), path.join(out, 'cat.webp'));
   await paint(p, 'paint-cat.html', '#cut');
   save(await p.evaluate(() => document.getElementById('c').toDataURL('image/png')), path.join(dir, 'cat-cut.png'));
+  await paint(p, 'paint-reindeer.html');
+  save(await p.evaluate(() => document.getElementById('c').toDataURL('image/png')), path.join(dir, 'reindeer-cut.png'));
+  if (preview) await p.locator('#c').screenshot({ path: path.join(preview, 'reindeer.png'), omitBackground: true });
   await paint(p, 'paint-xmas.html');
   save(await p.evaluate(() => document.getElementById('c').toDataURL('image/webp', 0.86)), path.join(out, 'xmas.webp'));
   if (preview) await p.locator('#c').screenshot({ path: path.join(preview, 'xmas.png') });

@@ -1,9 +1,9 @@
 <!doctype html>
-<!-- Paints the Christmas artwork: Santa's sleigh across the moon, a lit tree, and the sleeping cat (art/cat-cut.png).
+<!-- Paints the Christmas artwork: Santa's sleigh across the moon, a lit tree, and a sleeping reindeer (art/reindeer-cut.png).
      Run art/render.js to export assets/xmas.webp. -->
 <meta charset="utf-8">
 <canvas id="c" width="1200" height="900"></canvas>
-<img id="cat" src="cat-cut.png" hidden>
+<img id="cat" src="reindeer-cut.png" hidden>
 <script>
 const W = 1200, H = 900;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -239,7 +239,7 @@ function cat() {
   ctx.globalAlpha = 1; const sh = ctx.createLinearGradient(0, -30, 0, 30); sh.addColorStop(0, 'rgba(255,255,255,0.12)'); sh.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = sh; ctx.fillRect(-230, -40, 460, 80);
   ctx.restore();
-  ctx.drawImage(img, 0, 0, 1200, 900, 300, 504, 1200 * 0.38, 900 * 0.38);
+  ctx.drawImage(img, 0, 0, 1200, 900, 262, 470, 1200 * 0.43, 900 * 0.43);
   // warm tree light on the cat's right side
   ctx.save(); ctx.globalCompositeOperation = 'soft-light'; glow(700, 690, 180, '255,190,120', 0.5); ctx.restore();
 }
