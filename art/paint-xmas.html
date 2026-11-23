@@ -1,0 +1,269 @@
+<!doctype html>
+<!-- Paints the Christmas artwork: Santa's sleigh across the moon, a lit tree, and the sleeping cat (art/cat-cut.png).
+     Run art/render.js to export assets/xmas.webp. -->
+<meta charset="utf-8">
+<canvas id="c" width="1200" height="900"></canvas>
+<img id="cat" src="cat-cut.png" hidden>
+<script>
+const W = 1200, H = 900;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let seed = 1225;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const SIL = '#0B0E26';
+const MOON = { x: 300, y: 205, r: 100 };
+const TREE = { x: 865, top: 178, tiers: 6 };
+const GROUND = (x) => 648 + Math.sin(x / 260) * 14 + Math.sin(x / 97) * 4;
+
+function glow(x, y, r, color, alpha) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${color},${alpha})`); g.addColorStop(1, `rgba(${color},0)`);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+}
+
+/* ---------- sky, moon, sleigh ---------- */
+function sky() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0E1333'); g.addColorStop(0.5, '#1C2350'); g.addColorStop(0.75, '#2B2E5E'); g.addColorStop(1, '#2B2E5E');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 160; i++) { ctx.fillStyle = `rgba(255,250,235,${0.15 + rnd() * 0.6})`; const s = rnd() < 0.1 ? 2 : 1.2; ctx.fillRect(rnd() * W, rnd() * 520, s, s); }
+  glow(MOON.x, MOON.y, 360, '220,215,255', 0.18);
+  glow(MOON.x, MOON.y, 170, '255,244,220', 0.35);
+  const mg = ctx.createRadialGradient(MOON.x - 30, MOON.y - 30, 10, MOON.x, MOON.y, MOON.r);
+  mg.addColorStop(0, '#FFFBEF'); mg.addColorStop(0.7, '#F4EBD3'); mg.addColorStop(1, '#E2D6B8');
+  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(MOON.x, MOON.y, MOON.r, 0, 7); ctx.fill();
+  ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = '#A8987A';
+  [[-30, -20, 18], [25, 30, 14], [10, -40, 8], [-35, 35, 11], [40, -10, 7]].forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(MOON.x + dx, MOON.y + dy, r, 0, 7); ctx.fill(); });
+  ctx.restore();
+}
+function reindeer(x, y, s, phase) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(-0.12);
+  ctx.fillStyle = SIL; ctx.strokeStyle = SIL; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.ellipse(0, 0, 34, 13, -0.05, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(20, -9); ctx.quadraticCurveTo(33, -18, 40, -35); ctx.lineTo(49, -31); ctx.quadraticCurveTo(41, -12, 30, 3); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(49, -36, 10, 6.5, 0.35, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(58, -32, 6.5, 4.2, 0.45, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(41, -42, 6, 2.2, -0.7, 0, 7); ctx.fill();
+  ctx.lineWidth = 2.4; ctx.beginPath();
+  ctx.moveTo(45, -41); ctx.quadraticCurveTo(40, -60, 29, -68); ctx.moveTo(41, -53); ctx.lineTo(32, -55); ctx.moveTo(37, -61); ctx.lineTo(41, -70);
+  ctx.moveTo(48, -41); ctx.quadraticCurveTo(52, -58, 46, -70); ctx.moveTo(49, -54); ctx.lineTo(57, -60); ctx.stroke();
+  ctx.lineWidth = 4.2;
+  const leg = (a, b, c) => { ctx.beginPath(); ctx.moveTo(...a); ctx.quadraticCurveTo(...b, ...c); ctx.stroke(); };
+  const p = phase * 4;
+  leg([24, 7], [38, 14 + p], [48, 8 + p]); leg([17, 9], [30, 21], [38, 19]);
+  leg([-24, 6], [-38, 14 - p], [-52, 12 - p]); leg([-18, 9], [-30, 21], [-44, 23]);
+  ctx.beginPath(); ctx.ellipse(-35, -5, 6, 3, -0.6, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function sleigh(x, y, s) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(-0.1);
+  ctx.fillStyle = SIL; ctx.strokeStyle = SIL; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 3.4; ctx.beginPath();
+  ctx.moveTo(-64, 24); ctx.lineTo(40, 24); ctx.quadraticCurveTo(64, 24, 61, 6); ctx.quadraticCurveTo(58, -3, 51, 3);
+  ctx.moveTo(-42, 24); ctx.lineTo(-42, 12); ctx.moveTo(22, 24); ctx.lineTo(22, 12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-68, -16); ctx.quadraticCurveTo(-74, 8, -52, 13); ctx.lineTo(30, 13); ctx.quadraticCurveTo(48, 11, 50, -6);
+  ctx.quadraticCurveTo(50, -15, 41, -13); ctx.lineTo(10, -7); ctx.lineTo(-40, -7); ctx.quadraticCurveTo(-46, -26, -68, -16); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-40, -20, 19, 17, 0.2, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-46, -36); ctx.lineTo(-40, -44); ctx.lineTo(-34, -36); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-8, -19, 16, 15, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(-4, -39, 8.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(1, -33, 7, 7, 0.3, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-13, -43); ctx.quadraticCurveTo(-4, -52, 6, -45); ctx.quadraticCurveTo(14, -56, 20, -52); ctx.lineTo(4, -41); ctx.fill();
+  ctx.beginPath(); ctx.arc(21, -51, 4.2, 0, 7); ctx.fill();
+  ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-2, -25); ctx.quadraticCurveTo(12, -30, 24, -22); ctx.stroke();
+  ctx.restore();
+}
+function flight() {
+  const deer = [[352, 196, 0.95, 1], [432, 180, 0.95, -1], [512, 164, 0.95, 1]];
+  ctx.save(); ctx.strokeStyle = SIL; ctx.lineWidth = 1.4; ctx.beginPath();
+  ctx.moveTo(272, 202); deer.forEach(([x, y]) => ctx.quadraticCurveTo(x - 40, y + 14, x + 18, y - 6)); ctx.stroke(); ctx.restore();
+  sleigh(248, 220, 1);
+  deer.forEach(([x, y, s, ph]) => reindeer(x, y, s, ph));
+  // stardust trail behind the sleigh
+  for (let i = 0; i < 70; i++) {
+    const t = rnd(); const x = 190 - t * 260 + (rnd() - 0.5) * 30, y = 238 + t * 70 + (rnd() - 0.5) * 26;
+    ctx.fillStyle = `rgba(255,226,160,${(1 - t) * (0.35 + rnd() * 0.5)})`; ctx.beginPath(); ctx.arc(x, y, 0.8 + rnd() * 1.6, 0, 7); ctx.fill();
+  }
+}
+
+/* ---------- landscape ---------- */
+function hills() {
+  const layer = (base, amp, f, top, bottom, ph) => {
+    const g = ctx.createLinearGradient(0, base - amp, 0, H); g.addColorStop(0, top); g.addColorStop(1, bottom);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 8) ctx.lineTo(x, base + Math.sin(x / f + ph) * amp + Math.sin(x / (f * 0.37) + ph) * amp * 0.3);
+    ctx.lineTo(W, H); ctx.fill();
+  };
+  layer(560, 26, 210, '#5A6597', '#2F3766', 1);
+  // pines and cottages on the far hill
+  for (let i = 0; i < 26; i++) {
+    const x = rnd() * W, y = 556 + Math.sin(x / 210 + 1) * 26 + 8, h = 26 + rnd() * 30;
+    ctx.fillStyle = '#1E2550';
+    for (let k = 0; k < 3; k++) { const w = h * (0.36 - k * 0.08), ty = y - h * (0.35 + k * 0.3); ctx.beginPath(); ctx.moveTo(x, ty - h * 0.3); ctx.lineTo(x - w, ty + h * 0.25); ctx.lineTo(x + w, ty + h * 0.25); ctx.fill(); }
+  }
+  [[90, 574], [160, 566], [560, 590], [640, 596]].forEach(([x, y]) => {
+    ctx.fillStyle = '#262B57'; ctx.fillRect(x - 18, y - 16, 36, 22);
+    ctx.fillStyle = '#E8ECFA'; ctx.beginPath(); ctx.moveTo(x - 24, y - 14); ctx.lineTo(x, y - 34); ctx.lineTo(x + 24, y - 14); ctx.fill();
+    glow(x - 7, y - 6, 16, '255,200,120', 0.5); ctx.fillStyle = '#FFD58A'; ctx.fillRect(x - 10, y - 9, 6, 6); ctx.fillRect(x + 4, y - 9, 6, 6);
+  });
+  layer(600, 18, 300, '#8D99C8', '#4D5888', 3);
+}
+function snowGround() {
+  const g = ctx.createLinearGradient(0, 630, 0, H);
+  g.addColorStop(0, '#C9D2F0'); g.addColorStop(0.35, '#AAB5E0'); g.addColorStop(1, '#6E78AC');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 8) ctx.lineTo(x, GROUND(x)); ctx.lineTo(W, H); ctx.fill();
+  // drifts and sparkle
+  for (let i = 0; i < 40; i++) { const x = rnd() * W, y = GROUND(x) + 30 + rnd() * 200; ctx.fillStyle = `rgba(255,255,255,${0.05 + rnd() * 0.06})`; ctx.beginPath(); ctx.ellipse(x, y, 60 + rnd() * 120, 8 + rnd() * 10, 0, 0, 7); ctx.fill(); }
+  for (let i = 0; i < 900; i++) { const x = rnd() * W, y = GROUND(x) + rnd() * (H - GROUND(x)); ctx.fillStyle = `rgba(255,255,255,${rnd() * 0.5})`; ctx.fillRect(x, y, 1.2, 1.2); }
+}
+
+/* ---------- the tree ---------- */
+const tiers = Array.from({ length: TREE.tiers }, (_, i) => {
+  const top = TREE.top + i * 88, bottom = top + 150, half = 46 + (i + 1) * 31;
+  return { top, bottom, half };
+});
+function tierPath(t, grow = 0) {
+  const p = new Path2D(), cx = TREE.x, hw = t.half + grow;
+  p.moveTo(cx, t.top - grow);
+  p.quadraticCurveTo(cx - hw * 0.45, t.top + (t.bottom - t.top) * 0.55, cx - hw, t.bottom + grow);
+  const n = Math.max(4, Math.round(hw / 26));
+  for (let k = 0; k < n; k++) {
+    const x0 = cx - hw + (2 * hw * k) / n, x1 = cx - hw + (2 * hw * (k + 1)) / n;
+    p.quadraticCurveTo((x0 + x1) / 2, t.bottom + grow - 16, x1, t.bottom + grow + (k % 2 ? 4 : -2));
+  }
+  p.quadraticCurveTo(cx + hw * 0.45, t.top + (t.bottom - t.top) * 0.55, cx, t.top - grow);
+  return p;
+}
+function tree() {
+  // shadow on the snow, cast away from the moon
+  ctx.save(); ctx.filter = 'blur(18px)'; ctx.fillStyle = 'rgba(20,20,60,0.45)';
+  ctx.beginPath(); ctx.ellipse(TREE.x + 120, 770, 260, 34, 0.05, 0, 7); ctx.fill(); ctx.restore();
+  ctx.fillStyle = '#3B2618'; ctx.fillRect(TREE.x - 22, 720, 44, 50);
+  const all = new Path2D(); tiers.forEach((t) => all.addPath(tierPath(t)));
+  // drawn bottom tier first so upper tiers overlap
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    const t = tiers[i], p = tierPath(t);
+    const g = ctx.createLinearGradient(TREE.x - t.half, t.top, TREE.x + t.half, t.bottom);
+    g.addColorStop(0, '#2A6A4A'); g.addColorStop(0.5, '#174A33'); g.addColorStop(1, '#0C2C1F');
+    ctx.fillStyle = g; ctx.fill(p);
+    const sh = ctx.createLinearGradient(0, t.bottom - 40, 0, t.bottom + 10); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(4,16,12,0.45)');
+    ctx.fillStyle = sh; ctx.fill(p);
+  }
+  // needles
+  ctx.save(); ctx.clip(all); ctx.lineCap = 'round';
+  for (let k = 0; k < 42000; k++) {
+    const x = TREE.x - 240 + rnd() * 480, y = TREE.top - 10 + rnd() * 600;
+    if (!ctx.isPointInPath(all, x, y)) continue;
+    const side = Math.sign(x - TREE.x) || 1, out = Math.abs(x - TREE.x) / 240;
+    const ang = Math.PI / 2 - side * (0.6 + out * 0.6) + (rnd() - 0.5) * 0.5;
+    const len = 5 + rnd() * 9, lit = clamp(0.35 + 0.5 * rnd() - out * 0.1 + (side < 0 ? 0.12 : 0));
+    ctx.strokeStyle = `rgba(${lerp(20, 90, lit) | 0},${lerp(60, 150, lit) | 0},${lerp(40, 100, lit) | 0},0.55)`; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len); ctx.stroke();
+  }
+  ctx.restore();
+  // snow resting on the branches
+  tiers.forEach((t) => {
+    for (let k = 0; k < 26; k++) {
+      const u = rnd() * 2 - 1, x = TREE.x + u * t.half * 0.92, y = t.bottom - 14 - (1 - Math.abs(u)) * 26 + rnd() * 6;
+      const g = ctx.createLinearGradient(x, y - 6, x, y + 6); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#B7C2EA');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, 7 + rnd() * 9, 3 + rnd() * 2.5, (rnd() - 0.5) * 0.3, 0, 7); ctx.fill();
+    }
+  });
+  // ornaments
+  const placed = [];
+  for (let k = 0; k < 400 && placed.length < 26; k++) {
+    const x = TREE.x - 220 + rnd() * 440, y = TREE.top + 70 + rnd() * 520;
+    if (!ctx.isPointInPath(all, x, y) || !ctx.isPointInPath(all, x, y + 16)) continue;
+    if (placed.some(([a, b]) => Math.hypot(a - x, b - y) < 46)) continue;
+    placed.push([x, y]);
+    const r = 9 + rnd() * 6, col = [[196, 40, 60], [222, 170, 70], [200, 210, 230], [120, 40, 140]][Math.floor(rnd() * 4)];
+    const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    g.addColorStop(0, `rgb(${col.map((v) => Math.min(255, v + 90)).join(',')})`); g.addColorStop(0.6, `rgb(${col.join(',')})`); g.addColorStop(1, `rgb(${col.map((v) => v * 0.35 | 0).join(',')})`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#C9A45A'; ctx.fillRect(x - 3, y - r - 3, 6, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.22, r * 0.14, -0.6, 0, 7); ctx.fill();
+  }
+  // strings of lights draped across each tier
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  tiers.forEach((t, i) => {
+    const y0 = t.bottom - 44, hw = t.half * 0.9;
+    for (let k = 0; k <= 1; k += 1 / Math.max(6, Math.round(hw / 13))) {
+      const x = TREE.x - hw + 2 * hw * k, y = y0 + Math.sin(k * Math.PI) * 22 - (1 - Math.abs(2 * k - 1)) * 4 + (i % 2 ? 6 : 0);
+      if (!ctx.isPointInPath(all, x, y)) continue;
+      const c = rnd() < 0.7 ? '255,206,130' : ['255,110,110', '140,220,170', '150,180,255'][Math.floor(rnd() * 3)];
+      glow(x, y, 20, c, 0.32); glow(x, y, 6, c, 0.9);
+      ctx.fillStyle = 'rgba(255,250,235,0.95)'; ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 7); ctx.fill();
+    }
+  });
+  ctx.restore();
+  // star
+  const sx = TREE.x, sy = TREE.top - 18;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(sx, sy, 150, '255,210,120', 0.28); glow(sx, sy, 50, '255,230,170', 0.6); ctx.restore();
+  ctx.save(); ctx.translate(sx, sy); ctx.beginPath();
+  for (let k = 0; k < 10; k++) { const r = k % 2 ? 14 : 34, a = -Math.PI / 2 + (k * Math.PI) / 5; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+  ctx.closePath(); const sg = ctx.createLinearGradient(-30, -30, 30, 30); sg.addColorStop(0, '#FFF3C4'); sg.addColorStop(0.5, '#F1C35B'); sg.addColorStop(1, '#B9832E');
+  ctx.fillStyle = sg; ctx.fill(); ctx.restore();
+  // warm light spilling onto the snow
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(TREE.x, 690, 420, '255,170,90', 0.13); ctx.restore();
+}
+function gift(x, y, w, h, body, ribbon) {
+  const d = w * 0.28;
+  ctx.save();
+  const fg = ctx.createLinearGradient(x, y, x + w, y + h); fg.addColorStop(0, body[0]); fg.addColorStop(1, body[1]);
+  ctx.fillStyle = fg; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = body[0]; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + d, y - d * 0.5); ctx.lineTo(x + w + d, y - d * 0.5); ctx.lineTo(x + w, y); ctx.fill();
+  ctx.fillStyle = body[1]; ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w + d, y - d * 0.5); ctx.lineTo(x + w + d, y + h - d * 0.5); ctx.lineTo(x + w, y + h); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x + w, y, 2, h);
+  ctx.fillStyle = ribbon; ctx.fillRect(x + w / 2 - 5, y, 10, h);
+  ctx.beginPath(); ctx.moveTo(x + w / 2 - 5, y); ctx.lineTo(x + w / 2 - 5 + d, y - d * 0.5); ctx.lineTo(x + w / 2 + 5 + d, y - d * 0.5); ctx.lineTo(x + w / 2 + 5, y); ctx.fill();
+  const bx = x + w / 2 + d / 2, by = y - d * 0.25;
+  ctx.beginPath(); ctx.ellipse(bx - 10, by - 6, 11, 6, -0.5, 0, 7); ctx.ellipse(bx + 10, by - 6, 11, 6, 0.5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.ellipse(x + w * 0.45, y - d * 0.3, w * 0.35, 4, 0, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function gifts() {
+  gift(940, 700, 74, 56, ['#C3384C', '#7E1F2E'], '#F1D27A');
+  gift(1020, 722, 58, 44, ['#2E7D5B', '#174734'], '#F4EEE0');
+  gift(712, 712, 62, 48, ['#E6D3A3', '#A88F5A'], '#B3263A');
+}
+function cat() {
+  const img = document.getElementById('cat');
+  // little plaid blanket under the cat
+  ctx.save(); ctx.translate(548, 776);
+  ctx.beginPath(); ctx.ellipse(0, 0, 215, 34, -0.02, 0, 7); ctx.clip();
+  ctx.fillStyle = '#9E2638'; ctx.fillRect(-230, -40, 460, 80);
+  ctx.globalAlpha = 0.35; ctx.fillStyle = '#1F5A41';
+  for (let x = -230; x < 230; x += 28) ctx.fillRect(x, -40, 10, 80);
+  for (let y = -40; y < 40; y += 14) ctx.fillRect(-230, y, 460, 5);
+  ctx.globalAlpha = 1; const sh = ctx.createLinearGradient(0, -30, 0, 30); sh.addColorStop(0, 'rgba(255,255,255,0.12)'); sh.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = sh; ctx.fillRect(-230, -40, 460, 80);
+  ctx.restore();
+  ctx.drawImage(img, 0, 0, 1200, 900, 300, 504, 1200 * 0.38, 900 * 0.38);
+  // warm tree light on the cat's right side
+  ctx.save(); ctx.globalCompositeOperation = 'soft-light'; glow(700, 690, 180, '255,190,120', 0.5); ctx.restore();
+}
+function snowfall() {
+  for (let i = 0; i < 360; i++) {
+    const x = rnd() * W, y = rnd() * H, r = rnd() < 0.08 ? 2.6 + rnd() * 2 : 0.7 + rnd() * 1.6;
+    ctx.fillStyle = `rgba(255,255,255,${0.35 + rnd() * 0.5})`;
+    if (r > 2.5) { ctx.save(); ctx.filter = 'blur(1.5px)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+  }
+}
+function finish() {
+  const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H; const t = tmp.getContext('2d');
+  t.filter = 'blur(16px) brightness(1.1)'; t.drawImage(cv, 0, 0);
+  ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = 0.16; ctx.drawImage(tmp, 0, 0); ctx.restore();
+  const vg = ctx.createRadialGradient(W * 0.55, H * 0.5, 240, W * 0.55, H * 0.5, 820);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,6,24,0.5)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 8; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  ctx.putImageData(img, 0, 0);
+}
+document.getElementById('cat').decode().then(() => {
+  sky(); flight(); hills(); snowGround(); tree(); gifts(); cat(); snowfall(); finish();
+  window.done = true;
+});
+</script>

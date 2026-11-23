@@ -31,6 +31,9 @@
   --gold-soft: rgba(216, 183, 124, 0.16);
   --rose: #E7B9AE;
   --line: rgba(216, 183, 124, 0.28);
+  --berry: #C8414F;
+  --berry-deep: #9E2B39;
+  --pine: #2F7A57;
   --font-display: "Gowun Batang", "Nanum Myeongjo", "AppleMyungjo", serif;
   --font-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   color-scheme: dark;
@@ -81,37 +84,44 @@ h1 {
   width: 100%;
   max-width: 520px;
   aspect-ratio: 4 / 3;
-  padding: 0;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 22px;
   overflow: hidden;
-  cursor: pointer;
   background: var(--velvet);
   box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 0 0 6px rgba(216, 183, 124, 0.05);
-  transition: transform .4s ease, box-shadow .4s ease;
 }
-.hero img { width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.02); transition: transform 6s ease; }
-.hero:hover img { transform: scale(1.06); }
-.hero:active { transform: scale(.985); }
-.hero-cta {
-  position: absolute;
-  left: 50%; bottom: 16px;
-  transform: translateX(-50%);
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 10px 22px;
+.hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.start-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  min-width: min(100%, 260px);
+  padding: 15px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
-  background: rgba(21, 24, 46, 0.62);
-  border: 1px solid var(--line);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  background: linear-gradient(180deg, #E4C48A, var(--gold));
+  color: var(--night);
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: 0.06em;
-  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 12px 30px -10px rgba(216, 183, 124, 0.55);
+  touch-action: manipulation;
+  transition: transform .15s ease, filter .2s ease;
 }
-.hero-cta::before { content: ""; width: 0; height: 0; border-left: 10px solid var(--gold); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-.hero.loading .hero-cta::before { border: 2px solid var(--gold); border-right-color: transparent; border-radius: 50%; width: 12px; height: 12px; animation: spin 1s linear infinite; }
+.start-btn::before { content: ""; width: 0; height: 0; border-left: 11px solid currentColor; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+.start-btn:active { transform: scale(.97); }
+.start-btn.loading::before { border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.start-hint { margin: -6px 0 0; color: var(--muted); font-size: 14px; text-align: center; min-height: 1.6em; }
+
+/* Christmas season (Nov 20 – Jan 6): berry-red accents and falling snow */
+.snow { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.xmas .eyebrow { color: #EBA9AE; }
+.xmas .start-btn { background: linear-gradient(180deg, #D65563, var(--berry-deep)); color: #FFF6EC; box-shadow: 0 12px 30px -10px rgba(200, 65, 79, 0.6); }
+.xmas .panel { border-top: 2px solid rgba(200, 65, 79, 0.45); }
+.xmas .chip[aria-pressed="true"] { background: var(--berry); border-color: var(--berry); color: #FFF6EC; }
+.xmas .scene img { object-position: 57% 50%; }
+.start-hint { margin: -8px 0 0; color: var(--muted); font-size: 14px; text-align: center; min-height: 1.6em; }
 
 .settings { width: 100%; max-width: 520px; display: grid; gap: 14px; }
 .panel {
@@ -256,8 +266,9 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero img, .scene img { transition: none !important; }
-  .hero.loading .hero-cta::before { animation: none; }
+  .scene img { transition: none !important; }
+  .start-btn.loading::before { animation: none; }
+  .snow { display: none; }
 }
 </style>
 </head>
@@ -269,11 +280,9 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     <h1>달빛 자장가</h1>
   </header>
 
-  <button id="startBtn" class="hero" type="button" aria-label="자장가 시작하기">
-    <img src="assets/cat.webp" alt="달빛 아래 니트 담요 위에서 잠든 치즈 태비 고양이" width="1200" height="900">
-    <span class="hero-cta">눌러서 잠들기</span>
-  </button>
-  <p class="start-hint" id="hint">그림을 누르면 자장가가 시작돼요</p>
+  <figure class="hero"><img id="heroImg" src="assets/cat.webp" alt="달빛 아래 니트 담요 위에서 잠든 치즈 태비 고양이" width="1200" height="900"></figure>
+  <button id="startBtn" class="start-btn" type="button">잠들기 시작</button>
+  <p class="start-hint" id="hint">버튼을 누르면 자장가가 시작돼요</p>
   <p class="last-night" id="lastNight" hidden></p>
 
   <section class="settings" aria-label="설정">
@@ -339,6 +348,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   </div>
 </section>
 
+<canvas class="snow" id="snow" aria-hidden="true"></canvas>
 <audio id="musicEl" preload="auto" playsinline></audio>
 <audio id="ambEl" loop preload="auto" playsinline></audio>
 
@@ -346,6 +356,36 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
 (() => {
   'use strict';
   const $ = (s) => document.querySelector(s);
+
+  /* ---------- Christmas season: Nov 20 – Jan 6 ---------- */
+  const today = new Date(), md = (today.getMonth() + 1) * 100 + today.getDate();
+  const XMAS = md >= 1120 || md <= 106;
+  if (XMAS) {
+    document.documentElement.classList.add('xmas');
+    $('#heroImg').src = 'assets/xmas.webp';
+    $('#heroImg').alt = '눈 내리는 밤, 산타의 썰매와 순록이 달을 가로지르고 반짝이는 트리 아래에서 고양이가 잠든 그림';
+    $('#sceneImg').src = 'assets/xmas.webp';
+    $('.eyebrow').textContent = '메리 크리스마스 · 오늘 하루도 수고했어요';
+    (function snowfall() {
+      const c = $('#snow');
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { c.hidden = true; return; }
+      const g = c.getContext('2d'); let w = 0, h = 0;
+      const size = () => { const dpr = Math.min(2, devicePixelRatio || 1); w = innerWidth; h = innerHeight; c.width = w * dpr; c.height = h * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0); };
+      size(); addEventListener('resize', size);
+      const flakes = Array.from({ length: 60 }, () => ({ x: Math.random() * w, y: Math.random() * h, r: 0.8 + Math.random() * 2, v: 0.25 + Math.random() * 0.6, d: Math.random() * 6.3 }));
+      let last = 0;
+      (function frame(t) {
+        requestAnimationFrame(frame);
+        if (t - last < 40) return; last = t; // ~25 fps is plenty for drifting snow
+        g.clearRect(0, 0, w, h); g.fillStyle = '#FFFFFF';
+        for (const f of flakes) {
+          f.y += f.v; f.d += 0.012; f.x += Math.sin(f.d) * 0.35;
+          if (f.y > h + 6) { f.y = -6; f.x = Math.random() * w; }
+          g.globalAlpha = 0.25 + f.r * 0.18; g.beginPath(); g.arc(f.x, f.y, f.r, 0, 7); g.fill();
+        }
+      })(0);
+    })();
+  }
 
 
   /* ---------- settings (per-device convenience only) ---------- */
@@ -618,13 +658,13 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   const AMB_TITLES = { rain: '빗소리', ocean: '파도', fire: '벽난로', brown: '포근한 소음' };
 
   const state = {
-    list: store.get('list', ['brahms', 'twinkle', 'greensleeves']).filter((k) => TRACKS[k]),
+    list: store.get('list', XMAS ? ['silent', 'joy', 'noel', 'angels', 'tannenbaum'] : ['brahms', 'twinkle', 'greensleeves']).filter((k) => TRACKS[k]),
     shuffle: store.get('shuffle', false),
     amb: store.get('amb', 'rain'),
     timer: store.get('timer', 30),
     musicVol: store.get('musicVol', 0.7),
     ambVol: store.get('ambVol', 0.45),
-    autostart: store.get('autostart', true),
+    autostart: store.get('autostart', false),
     box: store.get('box', false),
     playing: false,
   };
@@ -931,8 +971,10 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   }
 
   // Called from a tap: unlock both audio elements inside the gesture, then swap in the rendered sounds.
+  let stoppedAt = 0;
   async function start() {
-    if (state.playing) return;
+    if (state.playing || Date.now() - stoppedAt < 1500) return; // a stray tap right after stopping
+    $('#startBtn').blur();
     if (nothingSelected()) { $('#hint').textContent = '자장가나 배경 소리를 하나 이상 골라주세요'; return; }
     state.playing = true;
     beginSession();
@@ -944,7 +986,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
       if (!state.playing) return;
       await Promise.all([playIndex(0), setAndPlay(ambEl, au)]);
     } catch (e) {
-      stop('소리를 켜지 못했어요. 그림을 한 번 더 눌러주세요.', 'error');
+      stop('소리를 켜지 못했어요. 시작 버튼을 한 번 더 눌러주세요.', 'error');
     }
   }
   // Called on open: browsers often block sound until a tap, so this only succeeds sometimes (always in the Android app).
@@ -960,7 +1002,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     } catch (e) {
       state.playing = false;
       musicEl.pause(); ambEl.pause();
-      $('#hint').textContent = '그림을 한 번 눌러주세요';
+      $('#hint').textContent = '시작 버튼을 한 번 눌러주세요';
     }
   }
 
@@ -993,12 +1035,13 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   function stop(message, reason) {
     if (state.playing && session.start) { session.end = Date.now(); session.reason = reason || 'user'; saveSession(); showLastSession(); }
     state.playing = false;
+    stoppedAt = Date.now();
     keeper(false);
     mine(musicEl); mine(ambEl);
     musicEl.pause(); ambEl.pause();
     clearInterval(tickId); clearTimeout(breathId); clearInterval(whisperId); clearTimeout(dimId);
     $('#night').hidden = true; $('#home').hidden = false;
-    $('#hint').textContent = message || '그림을 누르면 자장가가 시작돼요';
+    $('#hint').textContent = message || '버튼을 누르면 자장가가 시작돼요';
     if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {} }
   }
 
@@ -1030,6 +1073,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
     '지금은 아무것도 하지 않아도 괜찮아요',
     '이불의 무게와 따뜻함을 느껴봐요',
     '고양이처럼 동그랗게 몸을 말고 포근하게',
+    ...(XMAS ? ['산타 할아버지는 푹 잠든 사람에게 찾아온대요', '트리 불빛처럼 마음이 따뜻해지는 밤이에요'] : []),
   ];
   function breathe(i, left) {
     if (!state.playing) return;

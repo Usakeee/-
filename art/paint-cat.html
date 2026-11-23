@@ -335,6 +335,10 @@ function finish() {
   for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 10; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
   ctx.putImageData(img, 0, 0);
 }
-background(); blanket(); catBase(); fur(); face(); finish();
+// #cut renders just the cat on a transparent canvas, for compositing into other scenes
+const CUT = location.hash === "#cut";
+if (!CUT) { background(); blanket(); }
+catBase(); fur(); face();
+if (!CUT) finish();
 window.done = true;
 </script>

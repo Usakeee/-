@@ -1,12 +1,22 @@
-// Renders art/paint-cat.html to assets/cat.webp (and a PNG preview path if given).
+// Renders the artwork: assets/cat.webp (everyday) and assets/xmas.webp (Christmas season).
+// Usage: node art/render.js [previewDir]
 const { chromium } = require('playwright'); const fs = require('fs'); const path = require('path');
+const dir = __dirname, out = path.join(dir, '..', 'assets'), preview = process.argv[2];
+async function paint(page, file, hash) {
+  await page.goto('about:blank');
+  await page.goto('file://' + path.join(dir, file) + (hash || ''));
+  await page.waitForFunction(() => window.done, null, { timeout: 180000 });
+}
+const save = (url, file) => fs.writeFileSync(file, Buffer.from(url.split(',')[1], 'base64'));
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1200, height: 900 } });
-  await p.goto('file://' + path.join(__dirname, 'paint-cat.html'));
-  await p.waitForFunction(() => window.done, null, { timeout: 120000 });
-  const url = await p.evaluate(() => document.getElementById('c').toDataURL('image/webp', 0.86));
-  fs.mkdirSync(path.join(__dirname, '..', 'assets'), { recursive: true });
-  fs.writeFileSync(path.join(__dirname, '..', 'assets', 'cat.webp'), Buffer.from(url.split(',')[1], 'base64'));
-  if (process.argv[2]) await p.locator('#c').screenshot({ path: process.argv[2] });
+  fs.mkdirSync(out, { recursive: true });
+  const b = await chromium.launch({ args: ['--allow-file-access-from-files'] }); const p = await b.newPage({ viewport: { width: 1200, height: 900 } });
+  await paint(p, 'paint-cat.html');
+  save(await p.evaluate(() => document.getElementById('c').toDataURL('image/webp', 0.86)), path.join(out, 'cat.webp'));
+  await paint(p, 'paint-cat.html', '#cut');
+  save(await p.evaluate(() => document.getElementById('c').toDataURL('image/png')), path.join(dir, 'cat-cut.png'));
+  await paint(p, 'paint-xmas.html');
+  save(await p.evaluate(() => document.getElementById('c').toDataURL('image/webp', 0.86)), path.join(out, 'xmas.webp'));
+  if (preview) await p.locator('#c').screenshot({ path: path.join(preview, 'xmas.png') });
   await b.close();
 })();
